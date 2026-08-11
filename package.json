@@ -1,0 +1,11 @@
+{
+    "name": "onchain-stripe",
+    "private": true,
+    "scripts": {
+        "api": "pnpm --filter api dev",
+        "web": "pnpm --filter frontend dev"
+    },
+    "devDependencies": {
+        "prettier": "^3.9.4"
+    }
+}

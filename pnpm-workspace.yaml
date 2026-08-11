@@ -1,0 +1,21 @@
+packages:
+  - "api"
+  - "frontend"
+
+allowBuilds:
+  '@reown/appkit': false
+  bufferutil: false
+  esbuild: false
+  keccak: false
+  sharp: false
+  unrs-resolver: false
+  utf-8-validate: false
+
+# pnpm blocks dependency postinstall/build scripts by default (supply-chain safety).
+# These native packages are safe to skip — their prebuilt binaries arrive via
+# optionalDependencies, and Next falls back without sharp. Listing them here
+# silences the prompt instead of approving arbitrary script execution.
+ignoredBuiltDependencies:
+  - esbuild
+  - sharp
+  - unrs-resolver

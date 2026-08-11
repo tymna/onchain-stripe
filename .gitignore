@@ -1,0 +1,36 @@
+# Patterns are hierarchical: no leading "/" matches at any depth,
+# so this single root file covers every package (api, frontend, …).
+
+# ---- dependencies ---- #
+node_modules/
+.pnpm-store/
+
+# ---- secrets (keep .env.example committed as a template) ---- #
+.env
+.env.*
+!.env.example
+
+# ---- build output / caches ---- #
+dist/
+.next/
+out/
+cache/
+*.tsbuildinfo
+
+# ---- logs ---- #
+*.log
+pnpm-debug.log*
+
+# ---- local ai/notes (not part of the public repo) ---- #
+# AGENTS.md is a copy of CLAUDE.md — same private notes, so same treatment.
+# Both stay on disk for local tooling; neither is published.
+CLAUDE.md
+AGENTS.md
+TODO.md
+.claude/
+
+# ---- os / editor ---- #
+.DS_Store
+.idea/
+.vscode/
+*.swp

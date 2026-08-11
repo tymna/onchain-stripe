@@ -1,0 +1,141 @@
+@import 'tailwindcss';
+
+/* Token system — "a billing statement, set in type".
+   ink-*  : blue-cast darks (page → card → border → hover-border)
+   paper  : primary text (cool white, like receipt paper)
+   fog    : secondary text · faint : labels
+   brand  : the house mint — actions + money (MRR, Active)
+   mint   : deeper mint for small stamps/dots, where the pale one washes out */
+@theme inline {
+    --color-ink-950: #0b0d12;
+    --color-ink-900: #12151c;
+    --color-ink-850: #161a23;
+    --color-ink-800: #1e2330;
+    --color-ink-700: #2b3244;
+    --color-paper: #e9ebf3;
+    --color-fog: #9aa1b7;
+    --color-faint: #5d6478;
+    --color-brand: #ccffe5;
+    --color-brand-bright: #b8ffd9;
+    --color-mint: #7ce8ad;
+
+    --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+    --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+    --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Root gets the same paint as body: the overscroll/rubber-band area is drawn
+   from the root's background in most browsers, so the page never meets a
+   differently-colored void at its edges. */
+html {
+    background: var(--color-ink-950);
+}
+
+body {
+    background: var(--color-ink-950);
+    color: var(--color-paper);
+}
+
+::selection {
+    background: rgba(204, 255, 229, 0.25);
+}
+
+/* ---- MOTION ---- */
+
+@keyframes rise {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes pop {
+    from {
+        opacity: 0;
+        transform: translateY(8px) scale(0.96);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+/* Page-load sequence: direct children rise in, 60ms apart — the whole page
+   settles in under a second. fill-mode `backwards` (never `both`/`forwards`):
+   a kept transform would make every section a containing block for
+   position:fixed children, trapping modals inside their section. */
+.stagger > * {
+    animation: rise 0.55s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+.stagger > *:nth-child(2) {
+    animation-delay: 60ms;
+}
+.stagger > *:nth-child(3) {
+    animation-delay: 120ms;
+}
+.stagger > *:nth-child(4) {
+    animation-delay: 180ms;
+}
+.stagger > *:nth-child(5) {
+    animation-delay: 240ms;
+}
+.stagger > *:nth-child(6) {
+    animation-delay: 300ms;
+}
+.stagger > *:nth-child(7) {
+    animation-delay: 360ms;
+}
+.stagger > *:nth-child(8) {
+    animation-delay: 420ms;
+}
+
+/* ---- SIGNATURE: receipt tear-line ---- */
+
+/* Perforated divider between sections — 8px dash / 8px gap, wider than any
+   browser dashed-border, so it reads as a receipt perforation, not a default. */
+.tear {
+    position: relative;
+}
+.tear::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: repeating-linear-gradient(90deg, var(--color-ink-800) 0 8px, transparent 8px 16px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+        animation-duration: 0.01ms !important;
+        animation-delay: 0ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Privy renders its own UI (UserPill, login modal) but reads these CSS
+   variables from body — square them off to match the house's no-rounded-
+   corners rule. (--privy-color-* overrides exist too if the palette ever
+   needs aligning.) */
+body {
+    --privy-border-radius-sm: 0px;
+    --privy-border-radius-md: 0px;
+    --privy-border-radius-lg: 0px;
+    --privy-border-radius-full: 0px;
+}
