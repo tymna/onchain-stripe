@@ -7,6 +7,16 @@ import { sendEmail } from '../email';
 
 export const cron = new Hono();
 
+// plan names are free text set by any merchant on-chain — escape before they hit HTML
+function escapeHtml(s: string) {
+    return s
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 cron.post('/expiry', async (c) => {
     // machine-to-machine guard: only the scheduler knows the secret.
     // the !secret check keeps the route closed if the env var is ever missing
@@ -52,7 +62,7 @@ cron.post('/expiry', async (c) => {
             await sendEmail(
                 row.email,
                 'Your subscription is expiring soon',
-                `<p>Your <b>${row.planName ?? 'subscription'}</b> plan expires on ${row.expiresAt.toUTCString()}. Renew on the dashboard to keep it active.</p>`,
+                `<p>Your <b>${escapeHtml(row.planName ?? 'subscription')}</b> plan expires on ${row.expiresAt.toUTCString()}. Renew on the dashboard to keep it active.</p>`,
             );
             await db.insert(expiryNotices).values({
                 subId: row.subId,
