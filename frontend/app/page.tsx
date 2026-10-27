@@ -10,6 +10,7 @@ import { ActionButton } from '../components/ActionButton';
 import { Section } from '../components/Section';
 import { useRegisterMerchant } from '../hooks/useRegisterMerchant';
 import { useUsdcBalance } from '../hooks/useUsdcBalance';
+import { useMintUsdc, FAUCET_AMOUNT } from '../hooks/useMintUsdc';
 import { usdc } from '../lib/format';
 import { usePlans } from '../hooks/usePlans';
 import { useMetrics } from '../hooks/useMetrics';
@@ -96,6 +97,19 @@ export default function Home() {
     const booting = !booted && stillBooting;
 
     const { registerMerchant, isPending: registering, isSuccess, error } = useRegisterMerchant();
+    const {
+        mint: mintUsdc,
+        isPending: minting,
+        isSuccess: minted,
+        error: mintError,
+    } = useMintUsdc();
+
+    useEffect(() => {
+        if (minted) toast.success(`Minted ${usdc(FAUCET_AMOUNT.toString())} test USDC`);
+    }, [minted]);
+    useEffect(() => {
+        if (mintError) toast.error(mintError.message);
+    }, [mintError]);
 
     // The deal, shown before the button is pressed: what registering costs and
     // what cut the protocol takes. Same queryKeys as the reads inside
@@ -148,6 +162,17 @@ export default function Home() {
                         {balance !== undefined && (
                             <p className="font-mono text-xs tracking-wide text-faint">
                                 {usdc(balance.toString())} <span className="uppercase">usdc</span>
+                                {/* Testnet faucet — the token is an open-mint mock. */}
+                                {' · '}
+                                <button
+                                    onClick={mintUsdc}
+                                    disabled={minting}
+                                    className="text-mint underline-offset-2 hover:underline disabled:cursor-wait disabled:opacity-50"
+                                >
+                                    {minting
+                                        ? 'minting…'
+                                        : `+${usdc(FAUCET_AMOUNT.toString())} test`}
+                                </button>
                             </p>
                         )}
                     </div>

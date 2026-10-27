@@ -1,11 +1,28 @@
 # onchain-stripe
 
-**Stripe, on-chain.** Recurring **USDC subscriptions on Base** — a non-custodial payment contract plus the full off-chain stack that turns its events into a live revenue dashboard (MRR, active subscribers, churn).
+[![contracts](https://github.com/tymna/onchain-stripe/actions/workflows/contracts.yml/badge.svg)](https://github.com/tymna/onchain-stripe/actions/workflows/contracts.yml)
 
-The contract is deliberately tiny; the *data* is rich. That split is the point: money routing stays on-chain and verifiable, while everything a creator actually wants to look at is derived off-chain from the event log.
+**Stripe, on-chain.** Merchants create subscription plans, customers pay in **USDC on Base**, and the merchant gets a live revenue dashboard with MRR, active subscribers and churn. Customers get an email before their subscription expires.
 
-> **Live on Base Sepolia** — [`0xc91a4d1B95Ea603f01125b9590baF130613a3665`](https://sepolia.basescan.org/address/0xc91a4d1B95Ea603f01125b9590baF130613a3665) · fee 2.5% · merchant registration 10 USDC
-> USDC is an open-mint [mock](https://sepolia.basescan.org/address/0x93b34C315d4F0F91F0d3702474fa3AB211f0640C) (`0x93b3…640c`), so you can fund yourself and run the whole flow end to end.
+I built the whole thing end to end: the Solidity contract, the indexer pipeline, the Postgres data model, the API, the Next.js app, email, and the deployment.
+
+| | |
+| --- | --- |
+| **Live app** | [onchain-stripe.vercel.app](https://onchain-stripe.vercel.app/) |
+| **API** | [onchain-stripe.onrender.com/api/v1/v_plans](https://onchain-stripe.onrender.com/api/v1/v_plans) (free tier, so the first request after idle takes ~30–60s) |
+| **Contract** | [`0xc91a…3665`](https://sepolia.basescan.org/address/0xc91a4d1B95Ea603f01125b9590baF130613a3665) on Base Sepolia, verified · fee 2.5% · merchant registration 10 USDC |
+| **Test USDC** | open-mint [mock](https://sepolia.basescan.org/address/0x93b34C315d4F0F91F0d3702474fa3AB211f0640C), so anyone can fund a wallet and run the full flow |
+
+### Highlights
+
+- **Non-custodial by design, and proven by fuzzing.** The contract routes every payment out in the same transaction and never holds funds. An invariant test (256 runs × 128k random calls) checks that its balance stays at zero.
+- **75 Foundry tests, Slither clean, CI on every push.**
+- **Event-sourced data layer (CQRS).** The indexer appends raw chain events to one append-only table, and Postgres views derive current state from it. Replays can't double-count, and nothing goes stale.
+- **Metrics computed in SQL**, not in the frontend, in a single pass that uses the database's clock, so every number on the dashboard agrees.
+- **Wallet-based auth done safely.** Privy JWTs are verified on the server, and the caller's address comes from the token, never from the request body.
+- **Production details:** idempotent expiry emails, a confirm-link email flow, a cron job that tolerates cold starts, CORS locked to the frontend, and secrets kept out of the client bundle.
+
+The contract is deliberately tiny and the *data* is rich. Money routing stays on-chain and verifiable, while everything a merchant wants to look at is derived off-chain from the event log.
 
 ---
 
@@ -46,7 +63,7 @@ contracts/          Foundry project — SubscriptionManager.sol, tests, deploy s
 api/                Hono API + Drizzle schema/migrations/views (Postgres)
 frontend/           Next.js dashboard (merchant + subscriber views)
 docs/               architecture diagram
-.github/workflows/  CI — forge fmt / build / test
+.github/workflows/  contracts.yml — forge fmt / build / test · cron-expiry.yml — daily expiry emails
 ```
 
 pnpm workspace: `api` and `frontend` are packages; `contracts` is a standalone Foundry project.
@@ -216,7 +233,7 @@ pnpm web                      # from the repo root → http://localhost:3000
 
 ### 5. Expiry emails (optional)
 
-Point any scheduler (cron-job.org, a GitHub Action, `crontab`) at the endpoint once a day:
+In production, `.github/workflows/cron-expiry.yml` does this daily at 09:00 UTC, with retries to cover the API's cold start. Locally, call it by hand:
 
 ```bash
 curl -X POST $API_URL/api/v1/cron/expiry -H "x-cron-secret: $CRON_SECRET"
@@ -264,6 +281,21 @@ The invariant test is the one that matters: "holds no value" is the property the
 cd contracts && forge test -vvv
 ```
 
+Static analysis: `slither .` reports 0 findings across 100 detectors (with `lib/`, `test/` and `script/` filtered out).
+
+---
+
+## Deployment
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Contract | Base Sepolia | deployed + verified via `make deploy-base-sepolia` |
+| Indexer | Goldsky | contract events → Neon `events` table |
+| Database | Neon (Postgres) | Drizzle migrations + `views.sql` |
+| API | Render (free web service) | root `api`, build `pnpm install`, start `pnpm start` |
+| Frontend | Vercel | `NEXT_PUBLIC_API_URL` = API URL including `/api/v1` |
+| Cron | GitHub Actions | `cron-expiry.yml`, secrets `API_URL` + `CRON_SECRET` |
+
 ---
 
 ## Status
@@ -274,8 +306,8 @@ cd contracts && forge test -vvv
 - [x] Hono API (`/metrics`, `/v_plans`, `/v_subscriptions`, `/settings`, `/cron`)
 - [x] Next.js + Privy dashboard; subscribe tx → metrics update
 - [x] Expiry notification emails (confirm-link flow + idempotent cron)
-- [ ] Hosted deployment (API + frontend on a free tier), Slither clean, CI green
-- [ ] Verified sending domain, so emails reach arbitrary subscribers
+- [x] Hosted deployment (API + frontend on a free tier), Slither clean, CI green
+- [x] Verified sending domain, so emails reach arbitrary subscribers
 
 ---
 
