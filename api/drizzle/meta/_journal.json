@@ -26,15 +26,8 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1793086882641,
-      "tag": "0003_drop_payments",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
       "when": 1793087048488,
-      "tag": "0004_subscriber_emails_expiry_notices",
+      "tag": "0003_subscriber_emails_expiry_notices",
       "breakpoints": true
     }
   ]

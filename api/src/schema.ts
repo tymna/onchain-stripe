@@ -10,6 +10,28 @@ import {
     primaryKey,
 } from 'drizzle-orm/pg-core';
 
+export const payments = pgTable('payments', {
+    id: text('id').primaryKey(),
+    eventType: text('event_type').notNull(),
+    subId: text('sub_id').notNull(),
+    subscriber: text('subscriber').notNull(),
+    planId: bigint('plan_id', {
+        mode: 'number',
+    }).notNull(),
+    amount: numeric('amount').notNull(),
+    expiresAt: timestamp('expires_at', {
+        withTimezone: true,
+    }).notNull(),
+    blockNumber: bigint('block_number', {
+        mode: 'number',
+    }).notNull(),
+    blockTimestamp: timestamp('block_timestamp', {
+        withTimezone: true,
+    }).notNull(),
+    txHash: text('tx_hash').notNull(),
+    logIndex: integer('log_index').notNull(),
+});
+
 export const events = pgTable('events', {
     id: text('id').primaryKey(),
     eventType: text('event_type').notNull(),

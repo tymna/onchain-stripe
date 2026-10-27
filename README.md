@@ -62,7 +62,7 @@ graph LR
 contracts/          Foundry project — SubscriptionManager.sol, tests, deploy scripts
 api/                Hono API + Drizzle schema/migrations/views (Postgres)
 frontend/           Next.js dashboard (merchant + subscriber views)
-goldsky/            Goldsky Mirror pipeline (contract logs → Postgres `events`)
+goldsky/            Goldsky Mirror pipeline (contract logs → Postgres `events`, `payments`)
 docs/               architecture diagram
 .github/workflows/  contracts.yml — forge fmt / build / test · api.yml — typecheck / test · cron-expiry.yml — daily expiry emails
 ```
@@ -217,7 +217,7 @@ psql "$DATABASE_URL" -f drizzle/views.sql   # v_plans, v_subscriptions
 
 Migrations create the tables; `views.sql` creates the two read-side views (Drizzle only declares them as `.existing()`, it never creates them).
 
-Then deploy the Goldsky pipeline in `goldsky/pipeline.yaml`: it filters the manager's logs from its deploy block, decodes them with the contract ABI and sinks every event into the `events` table with money cast as `bigint`. Store the Neon connection as a Goldsky secret first, then `goldsky pipeline apply goldsky/pipeline.yaml --status ACTIVE`. For your own deployment, change the address and block in its `filter`.
+Then deploy the Goldsky pipeline in `goldsky/pipeline.yaml`: it filters the manager's logs, decodes them with the contract ABI and sinks every event into the `events` table (Subscribed/Renewed also go to `payments`). Store the Neon connection as a Goldsky secret and put its name in `secret_name`, then `goldsky pipeline apply goldsky/pipeline.yaml --status ACTIVE`. For your own deployment, change the address in its `filter`.
 
 ### 3. API
 
