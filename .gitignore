@@ -21,13 +21,8 @@ cache/
 *.log
 pnpm-debug.log*
 
-# ---- local ai/notes (not part of the public repo) ---- #
-# AGENTS.md is a copy of CLAUDE.md — same private notes, so same treatment.
-# Both stay on disk for local tooling; neither is published.
-CLAUDE.md
-AGENTS.md
+# ---- local notes (not part of the public repo) ---- #
 TODO.md
-.claude/
 
 # ---- os / editor ---- #
 .DS_Store
