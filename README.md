@@ -2,7 +2,7 @@
 
 [![contracts](https://github.com/tymna/onchain-stripe/actions/workflows/contracts.yml/badge.svg)](https://github.com/tymna/onchain-stripe/actions/workflows/contracts.yml)
 
-**Stripe, on-chain.** Merchants create subscription plans, customers pay in **USDC on Base**, and the merchant gets a live revenue dashboard with MRR, active subscribers and churn. Customers get an email before their subscription expires.
+**Stripe, on-chain.** Merchants create subscription plans and customers prepay one or more billing periods in **USDC on Base**. Nothing is charged automatically: a subscription runs until its expiry, and the customer renews it with a new transaction (an email reminds them a few days before). The merchant gets a live revenue dashboard with MRR, active subscribers and a churned count.
 
 I built the whole thing end to end: the Solidity contract, the indexer pipeline, the Postgres data model, the API, the Next.js app, email, and the deployment.
 
@@ -16,7 +16,7 @@ I built the whole thing end to end: the Solidity contract, the indexer pipeline,
 ### Highlights
 
 - **Non-custodial by design, and proven by fuzzing.** The contract routes every payment out in the same transaction and never holds funds. An invariant test (256 runs × 128k random calls) checks that its balance stays at zero.
-- **75 Foundry tests, Slither clean, CI on every push.**
+- **75 Foundry tests + API tests on a real Postgres, Slither clean, CI on every push.**
 - **Event-sourced data layer (CQRS).** The indexer appends raw chain events to one append-only table, and Postgres views derive current state from it. Replays can't double-count, and nothing goes stale.
 - **Metrics computed in SQL**, not in the frontend, in a single pass that uses the database's clock, so every number on the dashboard agrees.
 - **Wallet-based auth done safely.** Privy JWTs are verified on the server, and the caller's address comes from the token, never from the request body.
@@ -62,8 +62,9 @@ graph LR
 contracts/          Foundry project — SubscriptionManager.sol, tests, deploy scripts
 api/                Hono API + Drizzle schema/migrations/views (Postgres)
 frontend/           Next.js dashboard (merchant + subscriber views)
+goldsky/            Goldsky Mirror pipeline (contract logs → Postgres `events`)
 docs/               architecture diagram
-.github/workflows/  contracts.yml — forge fmt / build / test · cron-expiry.yml — daily expiry emails
+.github/workflows/  contracts.yml — forge fmt / build / test · api.yml — typecheck / test · cron-expiry.yml — daily expiry emails
 ```
 
 pnpm workspace: `api` and `frontend` are packages; `contracts` is a standalone Foundry project.
@@ -89,7 +90,7 @@ registerMerchant()                       // pays merchantFee → feeRecipient, u
 createPlan(name, price, interval)        // merchant-gated
 subscribe(planId, periods)               // expiry = now + periods × interval
 renew(subId, periods)                    // expiry = max(oldExpiry, now) + periods × interval
-cancel(subId)                            // stops future renewals
+cancel(subId)                            // ends access now, no refund; renew revives it
 ```
 
 Each payment splits in one tx:
@@ -108,7 +109,7 @@ user → feeRecipient  : fee
 - **Disable, don't delete.** An inactive plan blocks new subscribes *and* renewals; existing subscriptions are honored to expiry, then lapse.
 - **Plan edits are forward-only** — changing price/interval never touches time already paid for.
 - **Per-row authorization** — only `plans[id].merchant` can edit its own plan; only `owner` touches protocol knobs.
-- **No `Lapsed` event.** A lapse is a non-event — no transaction happens. Churn is derived off-chain by comparing `expiresAt` to `now()`.
+- **No `Lapsed` event.** A lapse is a non-event — no transaction happens. Churned subs are derived off-chain by comparing `expiresAt` to `now()`.
 - **`indexed` = filter keys only** (`subscriber`, `subId`, `planId`, `merchant`) — never values or strings, since an indexed string hashes into something unreadable.
 - **CEI everywhere.** USDC has no transfer callback, so reentrancy isn't a live threat here — state is still written before the transfers.
 
@@ -152,7 +153,7 @@ Hono + zod, all reads validated at the boundary. Base path `/api/v1`.
 
 | Method | Route | Auth | Returns |
 | --- | --- | --- | --- |
-| `GET` | `/metrics?merchant=0x…` | — | `{ mrr, active, churn }` |
+| `GET` | `/metrics?merchant=0x…` | — | `{ mrr, active, churned }` |
 | `GET` | `/v_plans` | — | all plans |
 | `GET` | `/v_subscriptions?subscriber=0x…` | — | that address's subscriptions |
 | `POST` | `/settings/email` | Privy JWT | stores email, sends a confirmation link |
@@ -162,9 +163,9 @@ Hono + zod, all reads validated at the boundary. Base path `/api/v1`.
 
 **Metrics are computed in SQL, not JavaScript** — compute close to the data, display far from it:
 
-- **MRR** is a *snapshot*, not a lifetime sum: `Σ price over every subscription active right now`. A cancellation drops a row from the set; it never subtracts from a running total.
+- **MRR** is a *snapshot*, not a lifetime sum: every subscription active right now, its plan price normalized to a 30-day month (`price × 30 days / interval`), summed and floored to USDC base units. A cancellation drops a row from the set; it never subtracts from a running total.
 - **Active** = `expires_at > now() AND NOT cancelled`.
-- **Churn** = the exact complement.
+- **Churned** = the exact complement: how many of the merchant's subscriptions are cancelled or lapsed. A count, not a rate.
 
 All three come from one pass using `FILTER (WHERE …)` per aggregate, and all three use the **database's** `now()` — so every number on the dashboard shares one notion of "current".
 
@@ -216,7 +217,7 @@ psql "$DATABASE_URL" -f drizzle/views.sql   # v_plans, v_subscriptions
 
 Migrations create the tables; `views.sql` creates the two read-side views (Drizzle only declares them as `.existing()`, it never creates them).
 
-Then point a Goldsky pipeline at the deployed contract: the contract ABI, `start_at` = the deploy block, sinking every event into the `events` table with money cast as `bigint`.
+Then deploy the Goldsky pipeline in `goldsky/pipeline.yaml`: it filters the manager's logs from its deploy block, decodes them with the contract ABI and sinks every event into the `events` table with money cast as `bigint`. Store the Neon connection as a Goldsky secret first, then `goldsky pipeline apply goldsky/pipeline.yaml --status ACTIVE`. For your own deployment, change the address and block in its `filter`.
 
 ### 3. API
 
@@ -282,6 +283,20 @@ cd contracts && forge test -vvv
 ```
 
 Static analysis: `slither .` reports 0 findings across 100 detectors (with `lib/`, `test/` and `script/` filtered out).
+
+### API
+
+Vitest against an in-process Postgres ([PGlite](https://pglite.dev)) that runs the real migrations and `views.sql`, with email and Privy mocked:
+
+| Suite | Covers |
+| --- | --- |
+| `metrics.test.ts` | MRR normalization across intervals, active/churned split, renew after cancel, latest plan price, per-merchant scoping |
+| `cron.test.ts` | idempotency (a second run sends nothing), retry after a failed send, the 3-day window, plan-name HTML escaping, secret check |
+| `validation.test.ts` | zod rejects bad addresses and emails with a 400 before touching the DB or sending mail |
+
+```bash
+cd api && pnpm typecheck && pnpm test
+```
 
 ---
 

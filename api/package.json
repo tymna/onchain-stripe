@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "typecheck": "tsc"
   },
   "keywords": [],
   "author": "",
@@ -32,8 +33,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@types/node": "^26.0.0",
     "@types/pg": "^8.20.0",
-    "drizzle-kit": "^0.31.10"
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.5"
   }
 }

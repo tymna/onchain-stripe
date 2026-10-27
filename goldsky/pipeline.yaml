@@ -1,0 +1,85 @@
+# Goldsky Mirror pipeline: SubscriptionManager logs on Base Sepolia → Postgres `events`.
+#
+#   goldsky secret create ONCHAIN_STRIPE_NEON   # the Neon connection, kept in Goldsky
+#   goldsky pipeline apply goldsky/pipeline.yaml --status ACTIVE
+#
+# One row per emitted event, append-only, keyed `tx_hash:log_index` so a replay
+# upserts the same row instead of double-counting. Columns match api/src/schema.ts;
+# a column an event doesn't carry is NULL. Current state lives in drizzle/views.sql.
+name: onchain-stripe-events
+apiVersion: 3
+
+sources:
+  manager_logs:
+    type: dataset
+    dataset_name: base_sepolia.raw_logs
+    version: 1.0.0
+    start_at: earliest
+    # the manager contract only, from its deploy block
+    filter: address = '0xc91a4d1b95ea603f01125b9590baf130613a3665' and block_number >= 43777214
+
+transforms:
+  decoded:
+    sql: |
+      SELECT
+        transaction_hash,
+        log_index,
+        block_number,
+        block_timestamp,
+        _gs_log_decode(
+          _gs_fetch_abi('https://raw.githubusercontent.com/tymna/onchain-stripe/main/contracts/abi/SubscriptionManager.json', 'raw'),
+          topics,
+          data
+        ) AS ev
+      FROM manager_logs
+
+  # event_params follow the ABI input order (indexed and not), 1-based.
+  # Money is cast to BIGINT (raw 6-decimal base units) — a DECIMAL cast here
+  # silently multiplies by 10^10 on the way into Postgres.
+  events:
+    primary_key: id
+    sql: |
+      SELECT
+        transaction_hash || ':' || CAST(log_index AS STRING) AS id,
+        ev.event_signature AS event_type,
+        block_number,
+        TO_TIMESTAMP_LTZ(block_timestamp, 0) AS block_timestamp,
+        transaction_hash AS tx_hash,
+        CAST(log_index AS INT) AS log_index,
+        CASE WHEN ev.event_signature IN ('MerchantAdded', 'PlanCreated', 'PlanUpdated', 'PlanStatusChanged')
+          THEN LOWER(ev.event_params[1]) END AS merchant,
+        CASE WHEN ev.event_signature IN ('Subscribed', 'Renewed', 'Cancelled')
+          THEN LOWER(ev.event_params[1]) END AS subscriber,
+        CASE WHEN ev.event_signature IN ('Subscribed', 'Renewed', 'Cancelled')
+          THEN LOWER(ev.event_params[2]) END AS sub_id,
+        CASE
+          WHEN ev.event_signature IN ('PlanCreated', 'PlanUpdated', 'PlanStatusChanged')
+            THEN CAST(ev.event_params[2] AS BIGINT)
+          WHEN ev.event_signature IN ('Subscribed', 'Renewed', 'Cancelled')
+            THEN CAST(ev.event_params[3] AS BIGINT)
+        END AS plan_id,
+        CASE
+          WHEN ev.event_signature = 'PlanCreated' THEN CAST(ev.event_params[4] AS BIGINT)
+          WHEN ev.event_signature = 'PlanUpdated' THEN CAST(ev.event_params[3] AS BIGINT)
+        END AS price,
+        CASE WHEN ev.event_signature IN ('Subscribed', 'Renewed')
+          THEN CAST(ev.event_params[4] AS BIGINT) END AS amount,
+        CASE
+          WHEN ev.event_signature = 'PlanCreated' THEN CAST(ev.event_params[5] AS BIGINT)
+          WHEN ev.event_signature = 'PlanUpdated' THEN CAST(ev.event_params[4] AS BIGINT)
+        END AS `interval`,
+        CASE WHEN ev.event_signature IN ('Subscribed', 'Renewed')
+          THEN TO_TIMESTAMP_LTZ(CAST(ev.event_params[5] AS BIGINT), 0) END AS expires_at,
+        CASE WHEN ev.event_signature = 'PlanStatusChanged'
+          THEN CAST(ev.event_params[3] AS BOOLEAN) END AS active,
+        CASE WHEN ev.event_signature = 'PlanCreated'
+          THEN ev.event_params[3] END AS name
+      FROM decoded
+
+sinks:
+  neon_events:
+    type: postgres
+    from: events
+    schema: public
+    table: events
+    secret_name: ONCHAIN_STRIPE_NEON

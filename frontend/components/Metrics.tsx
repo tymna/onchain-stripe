@@ -107,7 +107,7 @@ export function Metrics({ merchant }: { merchant?: `0x${string}` }) {
         <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
             <Stat label="MRR" value={usdcCompact(data.mrr)} title={usdc(data.mrr)} accent />
             <Stat label="Active subs" value={String(data.active)} />
-            <Stat label="Churned" value={String(data.churn)} />
+            <Stat label="Churned" value={String(data.churned)} />
         </div>
     );
 }
