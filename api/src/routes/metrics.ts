@@ -39,5 +39,6 @@ metrics.get('/', zValidator('query', querySchema), async (c) => {
         .innerJoin(vPlans, eq(vSubscriptions.planId, vPlans.planId))
         .where(eq(vPlans.merchant, m));
 
-    return c.json(row);
+    // churn = old name of churned, kept so a frontend deployed before/after the API still works
+    return c.json({ ...row, churn: row.churned });
 });

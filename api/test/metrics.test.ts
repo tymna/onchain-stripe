@@ -17,7 +17,7 @@ describe('GET /metrics', () => {
 
     it('returns zeros for a merchant with no subscribers', async () => {
         await plan(1, M, '10000000', 30);
-        expect(await getMetrics()).toEqual({ mrr: '0', active: 0, churned: 0 });
+        expect(await getMetrics()).toMatchObject({ mrr: '0', active: 0, churned: 0 });
     });
 
     it('normalizes every plan price to a 30-day month', async () => {
@@ -29,7 +29,7 @@ describe('GET /metrics', () => {
         await subscribe('0x03', '0xu3', 3, days(10));
 
         // floored to whole base units: 10 + 30 + 9.863013 USDC
-        expect(await getMetrics()).toEqual({ mrr: '49863013', active: 3, churned: 0 });
+        expect(await getMetrics()).toMatchObject({ mrr: '49863013', active: 3, churned: 0 });
     });
 
     it('counts cancelled and expired subs as churned, not revenue', async () => {
@@ -39,7 +39,7 @@ describe('GET /metrics', () => {
         await event('Cancelled', { subId: '0x02', subscriber: '0xu2', planId: 1 });
         await subscribe('0x03', '0xu3', 1, days(-1)); // lapsed
 
-        expect(await getMetrics()).toEqual({ mrr: '10000000', active: 1, churned: 2 });
+        expect(await getMetrics()).toMatchObject({ mrr: '10000000', active: 1, churned: 2 });
     });
 
     it('a renew after cancel brings the sub back', async () => {
@@ -54,7 +54,7 @@ describe('GET /metrics', () => {
             expiresAt: days(40),
         });
 
-        expect(await getMetrics()).toEqual({ mrr: '10000000', active: 1, churned: 0 });
+        expect(await getMetrics()).toMatchObject({ mrr: '10000000', active: 1, churned: 0 });
     });
 
     it('uses the latest plan price and ignores other merchants', async () => {
@@ -74,6 +74,7 @@ describe('GET /metrics', () => {
             mrr: '20000000',
             active: 1,
             churned: 0,
+            churn: 0,
         });
     });
 });
